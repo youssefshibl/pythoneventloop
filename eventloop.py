@@ -12,8 +12,12 @@ class EventLoop:
         self.tempacceptcallback = None
         self.tempreadcallback = None
 
-    def add_reader(self, fd, event, callback, *args):
-        self._readers.append((fd, event, callback, *args))
+    def add_reader(
+        self, fd, event, defaultacceptcallback, responsecallback, acceptcallback=None
+    ):
+        self._readers.append(
+            (fd, event, defaultacceptcallback, responsecallback, acceptcallback)
+        )
 
     def add_writer(self, fd, event, callback, *args):
         self._writers.append((fd, event, callback, *args))
@@ -32,16 +36,21 @@ class EventLoop:
                     timer[2]()
                     self._timeouts.remove(timer)
             # print("checking for IO")
-            readables, writables, _ = select.select(
-                [reader[0] for reader in self._readers],
-                [writer[0] for writer in self._writers],
-                [],
-                0.05,
-            )
+            try:
+                readables, writables, _ = select.select(
+                    [reader[0] for reader in self._readers],
+                    [writer[0] for writer in self._writers],
+                    [],
+                    0.05,
+                )
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt")
+                self._running = False
+                continue
             for reader in self._readers:
-                source, event, callback, *args = reader
+                source, event, callback, responsecallback, acceptcallback = reader
                 if source in readables:
-                    callback(source, *args)
+                    callback(source, responsecallback, acceptcallback)
             for writer in self._writers:
                 source, event, callback, *args = writer
                 if writer[0] in writables:
@@ -56,20 +65,22 @@ class EventLoop:
         server.setblocking(False)
         self.tempreadcallback = readcallback
         self.tempacceptcallback = acceptcallback
-        self.add_reader(server, select.POLLIN, self.on_accept)
+        self.add_reader(
+            server, select.POLLIN, self.on_accept, readcallback, acceptcallback
+        )
 
-    def on_accept(self, server):
+    def on_accept(self, server, responsecallback, acceptcallback):
         try:
             conn, addr = server.accept()
             print(f"accepted connection from {addr}")
-            if self.tempacceptcallback:
-                self.tempacceptcallback(conn, addr)
+            if acceptcallback:
+                acceptcallback(server)
             conn.setblocking(False)
-            self.add_reader(conn, select.POLLIN, self.on_read)
+            self.add_reader(conn, select.POLLIN, self.on_read, responsecallback)
         except BlockingIOError:
             pass
 
-    def on_read(self, conn):
+    def on_read(self, conn, responsecallback,*args):
         try:
             data = conn.recv(1024)
             if not data:
@@ -78,7 +89,7 @@ class EventLoop:
                 conn.close()
             else:
                 print(f"received data: {data}")
-                if self.tempreadcallback:
-                    self.tempreadcallback(conn, data)
+                if responsecallback:
+                    responsecallback(conn, data)
         except BlockingIOError:
             pass
