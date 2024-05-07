@@ -1,0 +1,1 @@
+software engineer with an interest in DevOps prefers to contribute to open-source projects & problem-solving, fast learning curve, and is curious to explore technologies & behind the scenes of the software world, and always looking for new challenges, and opportunities to learn and grow.

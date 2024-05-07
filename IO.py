@@ -4,46 +4,43 @@ from EventLoop1 import EventLoop
 
 class IO:
     def __init__(self) -> None:
-        self.eventloop : EventLoop  = None
-        self.objects = []
+        self.eventloop: EventLoop = None
+        self.objects = {}
 
     def add_socket(
         self,
         sock,
         callback,
     ):
-        iotype = None
         # check if sock is a socket
         if isinstance(sock, socket.socket):
-            iotype = "socket"
             sock.setblocking(False)
-            
-        self.objects.append((sock, callback,iotype, False))
+            key = sock.fileno()
+            self.objects[key] = (sock, self.HandleSocketConnection, callback)
 
     def objs(self):
-        return [obj[0] for obj in self.objects]
+        # return list(self.objects.values())
+        return self.objects
 
-    def CanRead(self):
-        return True
+    def HandleSocketConnection(self, obj, callback):
+        conn, addr = obj.accept()
+        conn.setblocking(False)
+        key = conn.fileno()
+        self.objects[key] = (conn, self.HandleSocketData, callback)
 
-    def CanWrite(self):
-        return True
+    def HandleSocketData(self, obj, callback):
+        data = obj.recv(1024)
+        if data:
+            callback(obj, data)
 
-    def Readable(self, readables):
-        for obj, callback, iotype, status in self.objects:
-            if obj in readables:
-                if iotype == "socket":
-                    self.HandleSocket(obj,callback,iotype,status)
-    def HandleSocket(self, obj, callback, iotype, status):
-        if not status:
-            conn, addr = obj.accept()
-            conn.setblocking(False)
-            self.objects.append((conn, callback, iotype, True))
+    def Add_file(self, file, callback):
+        key = file.fileno()
+        self.objects[key] = (file, self.HandleFile, callback)
+
+    def HandleFile(self, obj, callback):
+        data = obj.read(1024)
+        if data:
+            callback(obj, data)
         else:
-            data = obj.recv(1024)
-            if not data:
-                self.objects.remove((obj, callback, iotype, status))
-            else:
-                # callback(obj, data) 
-                self.eventloop._queuecallback.append((callback,[obj,data]))
-        
+            del self.objects[obj.fileno()]
+            obj.close()
